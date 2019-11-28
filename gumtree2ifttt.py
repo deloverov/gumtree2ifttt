@@ -3,9 +3,9 @@ import requests
 import json
 from bs4 import BeautifulSoup
 
-pages_to_scrape = 1
 scrapings_dir = ''
-pageURL = 'https://www.gumtree.com.au/s-grange-brisbane/l3005788r10?price-type=free' # URL to scrape
+pageURLs = ['https://www.gumtree.com.au/s-grange-brisbane/l3005788r10',
+            'https://www.gumtree.com.au/s-digital-slr/grange-brisbane/c21107l3005788r10'] # URLs to scrape
 iftttURL = 'https://maker.ifttt.com/trigger/Gumtree/with/key/{key}' # Your key
 # You will NOT recieve notifications for the following categories
 filter_categories = ['/fish/',
@@ -31,11 +31,14 @@ filter_categories = ['/fish/',
                      '/ceiling-lights/',
                      '/pots-garden-beds/',
                      '/dining-tables/',
-                     '/coffee-tables/']
+                     '/coffee-tables/',
+                     '/livestock/',
+                     '/cabinets/',
+                     '/dogs-puppies/']
 
-def scrape_page_n(n):
+def scrape_page(page):
     savePath = os.path.join(scrapings_dir, 'gumtree.html')
-    results = requests.get(pageURL)
+    results = requests.get(page)
     results_file = open(savePath, 'w')
     with results_file:
         results_file.write(results.text.encode('utf-8', errors='ignore'))
@@ -50,23 +53,17 @@ def html_parser(filename):
     for node in gt_li:
         if len(node.contents) > 0:
             post_dict = {}
-            if len(node.find('div', attrs = {'class': 'user-ad-row__location'}).contents[2].get_text()) > 1:
-                post_dict['distance'] = node.find('div', attrs = {'class': 'user-ad-row__location'}).contents[2].get_text()
-            else:
-                continue
-            if any (category in node.get('href') for category in filter_categories):
-                continue
-            else:
-                post_dict['link'] = node.get('href')
+            post_dict['distance'] = node.find('div', attrs = {'class': 'user-ad-row__location'}).contents[2].get_text()
+            if len(post_dict['distance']) == 1: continue
+            post_dict['link'] = node.get('href')
+            if any (category in post_dict['link'] for category in filter_categories): continue
             post_dict['title'] = node.findAll('p', attrs = {'class': 'user-ad-row__title'})[0].string
             post_dict['description'] = node.findAll('p', attrs = {'class': 'user-ad-row__description'})[0].contents[0]
             #~ post_dict['area'] = node.find('span', attrs = {'class': 'user-ad-row__location-area'}).contents[0]
             post_dict['suburb'] = node.find('div', attrs = {'class': 'user-ad-row__location'}).contents[1]
-            post_dict['distance'] = node.find('div', attrs = {'class': 'user-ad-row__location'}).contents[2].get_text()
-            #~ post_dict['image'] = node.findAll('img')
-            #~ print post_dict['image']
-            if node.get('id') is not None:
-                post_dict['ad_id'] = node.get('id')
+            post_dict['price'] = node.find('div', attrs = {'class': 'user-ad-price'}).get_text()
+            #~ if 'Free' in post_dict['price']: post_dict['price'] = ''
+            post_dict['ad_id'] = node.get('id')
             master_list.append(post_dict)
     gumtree_file.close()
     os.remove(filename)
@@ -74,9 +71,19 @@ def html_parser(filename):
     
 def new_alert(entry):
     report = {}
-    report['value1'] = entry['title'] + '\n' + entry['description'] + '\n' + entry['suburb'] + entry['distance']
+    if entry['price'] == '':
+        if len(entry['title']) > 50:
+            report['value1'] = entry['title'] + '\n' + entry['description'] + '\n' + entry['suburb'] + entry['distance'] + '\n'
+        else:
+            report['value1'] = entry['description'] + '\n' + entry['suburb'] + entry['distance'] + '\n'
+    else:
+        if len(entry['title']) > 40:
+            report['value1'] = entry['title'] + '. ' + entry['price'] + '\n' + entry['description'] + '\n' + entry['suburb'] + entry['distance'] + '\n'
+        else:
+            report['value1'] = entry['description'] + '\n' + entry['suburb'] + entry['distance'] + '\n'
+        report['value1'] = entry['title'] + '. ' + entry['price'] + '\n' + entry['description'] + '\n' + entry['suburb'] + entry['distance'] + '\n'
     report['value2'] = 'http://gumtree.com.au' + entry['link']
-    #~ report["value3"] = entry["image"]
+    report['value3'] = entry['title'] + '\n' + entry['price']
     requests.post(iftttURL, data=report)
     
 def gumtree_scraper():
@@ -87,14 +94,14 @@ def gumtree_scraper():
     else:
         old_data = []
     this_scrape = []
-    for n in range(1, pages_to_scrape + 1):
-        this_scrape.append(html_parser(scrape_page_n(n)))
+    for page in pageURLs:
+        this_scrape.append(html_parser(scrape_page(page)))
         data_ids = []
         new_entries = []
         new_entry_count = 0
         for entry in old_data:
             data_ids.append(entry[u'ad_id'])
-        for entry in this_scrape[n - 1]:
+        for entry in this_scrape[pageURLs.index(page)]:
             if entry[u'ad_id'] not in data_ids:
                 old_data.append(entry)
                 new_entry_count += 1
