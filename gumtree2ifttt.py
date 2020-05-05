@@ -54,7 +54,7 @@ def html_parser(filename):
         if len(node.contents) > 0:
             post_dict = {}
             post_dict['distance'] = node.find('div', attrs = {'class': 'user-ad-row__location'}).contents[2].get_text()
-            if len(post_dict['distance']) == 1: continue
+            # if len(post_dict['distance']) == 1: continue #Uncomment this line if you want to get distance to the ad. Don't uncomment it if any your URLs does not contain suburb name
             post_dict['link'] = node.get('href')
             if any (category in post_dict['link'] for category in filter_categories): continue
             post_dict['title'] = node.findAll('p', attrs = {'class': 'user-ad-row__title'})[0].string
